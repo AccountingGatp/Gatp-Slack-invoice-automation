@@ -1581,7 +1581,7 @@ function payPanel() {
     <div class="field" style="margin:0;width:150px"><label for="pay-date">Date ${p.status === 'paid' ? 'received' : 'invoiced'}</label><input type="date" id="pay-date" data-pay="date" value="${esc(p.status === 'paid' ? (p.paidOn || '') : (p.invoicedOn || ''))}"></div>
     <div class="field" style="margin:0;flex:1;min-width:160px"><label for="pay-note">Note (invoice #, method)</label><input type="text" id="pay-note" data-pay="note" value="${esc(p.note || '')}"></div>
     ${p.status === 'paid' ? '<button class="btn primary" data-act="paynotify">' + (p.slack && p.slack.ok ? 'Re-send to Slack' : 'Send to Slack') + '</button>' : ''}
-  </div><div class="more" style="margin-top:6px"><span id="payMsg">${c.slackChannel ? 'Slack channel: ' + esc(c.slackChannel) : 'No Slack channel set – add it under Setup › Client profile.'}</span> ${sl}</div></div>`;
+  </div><div class="more" style="margin-top:6px"><span id="payMsg"></span> Slack message: ${slackBadge(S.clientId, S.period, p)}</div></div>`;
 }
 function payMini() {
   const R = curReview(); const p = payOf(R); const st = monthState(R); const [lbl, cls] = PAY[p.status] || PAY.none;
@@ -1597,11 +1597,36 @@ function mountAppTabs() {
 function syncAppTabs() { document.querySelectorAll('#appTabs button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.app === S.app))); }
 const revOf = (cid, ym) => { const id = reviewId(cid, ym); return (S.reviews[id] = S.reviews[id] || { client: cid, period: ym }); };
 function savePay(cid, ym) { const R = revOf(cid, ym); R.client = cid; R.period = ym; S.store && S.store.save('reviews', reviewId(cid, ym), R); }
+const SLACK_ERR = { no_channel: 'No channel ID in the JSON file', not_in_channel: 'Bot is not in that channel', channel_not_found: 'Channel ID not found', missing_token: 'Slack token missing', invalid_auth: 'Slack token invalid', unknown_client: 'Client not in the JSON file', is_archived: 'Channel is archived', timeout: 'Slack timed out', network_error: 'Network error', exception: 'Error' };
+// "Slack message" result shown next to the payment status.
+function slackBadge(cid, ym, p) {
+  const id = reviewId(cid, ym);
+  if (S.slackPending && S.slackPending.has(id)) return '<span class="pill info">Sending…</span>';
+  if (p.slack) return p.slack.ok
+    ? `<span class="pill pass">Sent ✓</span> <span class="more">${esc(fmtD(p.slack.at))}</span>`
+    : `<span class="pill warn">Not sent</span> <span class="more" style="color:var(--warn)">${esc(SLACK_ERR[p.slack.error] || p.slack.error || 'error')}</span>`;
+  return p.status === 'paid' ? '<span class="more">Not sent yet</span>' : '<span class="more">–</span>';
+}
+// After a change to Paid the server sends the Slack message; fetch the stored result so the row shows it.
+function watchSlack(cid, ym, beforeAt) {
+  const id = reviewId(cid, ym); S.slackPending = S.slackPending || new Set(); S.slackPending.add(id);
+  const done = () => { S.slackPending.delete(id); if (S.app === 'pay' || S.clientId === cid) render(true); };
+  const pull = async tries => {
+    try {
+      const r = await fetch('/api/data?col=reviews&id=' + encodeURIComponent(id), { headers: { 'x-app-passcode': local.get('gatp-pass') || '' }, cache: 'no-store' });
+      const d = r.ok ? await r.json() : null; const rv = S.reviews[id];
+      if (d && d.pay && d.pay.status === 'paid' && d.pay.slack && d.pay.slack.at !== beforeAt && rv) { rv.pay = Object.assign(payOf(rv), { slack: d.pay.slack }); return done(); }
+    } catch (e) { /* try again */ }
+    if (tries > 0) setTimeout(() => pull(tries - 1), 2000); else done();
+  };
+  render(true); setTimeout(() => pull(9), 2000);
+}
 function setPayStatus(cid, ym, val) {
   const c = S.clients[cid]; const R = revOf(cid, ym); const p = payOf(R); const was = p.status; const today = new Date().toISOString().slice(0, 10);
   p.status = val; if (val === 'invoiced' && !p.invoicedOn) p.invoicedOn = today; if (val === 'paid' && !p.paidOn) p.paidOn = today;
   if (val === 'paid' && !p.amount && c.monthlyFee) p.amount = c.monthlyFee;
   R.pay = p; savePay(cid, ym); render(true);
+  if (val === 'paid' && was !== 'paid') watchSlack(cid, ym, p.slack && p.slack.at);
 }
 const amt = v => parseFloat(String(v == null ? '' : v).replace(/[^0-9.\-]/g, '')) || 0;
 function payMonths() { const now = Engine.ymOf(new Date()); return [...new Set([now, ...lastMonths(12), ...Object.values(S.reviews).map(r => r.period).filter(Boolean)])].sort().reverse(); }
@@ -1625,14 +1650,14 @@ function renderPay() {
     const sl = p.slack ? (p.slack.ok ? `<span class="more">Sent ${esc(fmtD(p.slack.at))}</span>` : `<span class="more" style="color:var(--warn)">Not sent</span>`) : '';
     return `<tr>
       <td style="min-width:170px"><b>${esc(c.name || id)}</b>${c.group ? `<div class="more">${esc(c.group)}</div>` : ''}</td>
-      <td><input type="text" id="pt-slack-${esc(id)}" ${d} data-pt="slack" value="${esc(c.slackChannel || '')}" placeholder="#client-channel" aria-label="Slack channel for ${esc(c.name || id)}" style="width:125px"></td>
       <td><select id="pt-status-${esc(id)}" ${d} data-pt="status" aria-label="Payment status for ${esc(c.name || id)}" style="width:135px">${opt(p, 'none', 'Not invoiced')}${opt(p, 'invoiced', 'Awaiting payment')}${opt(p, 'paid', 'Paid')}</select></td>
+      <td style="white-space:nowrap;min-width:150px">${slackBadge(id, ym, p)}</td>
       <td><input type="text" id="pt-amount-${esc(id)}" ${d} data-pt="amount" value="${esc(p.amount || '')}" placeholder="$" aria-label="Amount" style="width:80px"></td>
       <td><input type="date" id="pt-date-${esc(id)}" ${d} data-pt="date" value="${esc(p.status === 'paid' ? (p.paidOn || '') : (p.invoicedOn || ''))}" aria-label="${p.status === 'paid' ? 'Date received' : 'Date invoiced'}"></td>
       <td><input type="text" id="pt-note-${esc(id)}" ${d} data-pt="note" value="${esc(p.note || '')}" placeholder="Invoice #, method" aria-label="Note" style="width:120px"></td>
       <td style="white-space:nowrap"><span class="pill ${rc}">${rl}</span></td>
       <td style="white-space:nowrap"><span class="pill ${ms === 'closed' ? 'pass' : cls}">${ms === 'closed' ? 'Month closed' : p.status === 'paid' ? 'Paid – start work' : lbl}</span></td>
-      <td style="white-space:nowrap">${p.status === 'paid' ? `<button class="btn" data-ptact="notify" ${d}>${p.slack && p.slack.ok ? 'Re-send' : 'Send to Slack'}</button> ` : ''}${sl}</td>
+      <td style="white-space:nowrap">${p.status === 'paid' ? `<button class="btn" data-ptact="notify" ${d}>${p.slack && p.slack.ok ? 'Re-send' : 'Send to Slack'}</button>` : ''}</td>
       <td><button class="linkish" data-open="${esc(id)}" data-opym="${ym}">Open review</button></td></tr>`;
   }).join('');
   const hist = payMonths().slice(0, 12);
@@ -1652,7 +1677,7 @@ function renderPay() {
     </section>
     <div style="display:flex;flex-wrap:wrap;gap:6px;margin:12px 0" role="group" aria-label="Filter">${fb('all', 'All')}${fb('none', 'Not invoiced')}${fb('invoiced', 'Awaiting payment')}${fb('open', 'Paid – work open')}${fb('closed', 'Closed')}</div>
     <div class="more" style="margin-bottom:8px"><span id="payMsg">${esc(S.payMsg || 'Set a payment to “Payment received” and a “start work” message goes to that client’s Slack channel.')}</span></div>
-    <div class="tbl"><table><thead><tr><th>Client</th><th>Slack channel</th><th>Payment status</th><th>Amount</th><th>Date</th><th>Note</th><th>Books review</th><th>Month</th><th>Slack</th><th></th></tr></thead><tbody>${body || '<tr><td colspan="10" class="more">No clients match this filter.</td></tr>'}</tbody></table></div>
+    <div class="tbl"><table><thead><tr><th>Client</th><th>Payment status</th><th>Slack message</th><th>Amount</th><th>Date</th><th>Note</th><th>Books review</th><th>Month</th><th>Slack</th><th></th></tr></thead><tbody>${body || '<tr><td colspan="10" class="more">No clients match this filter.</td></tr>'}</tbody></table></div>
     <h2 style="font-size:15px;margin:22px 0 8px">Last 12 months by client</h2>
     <div class="tbl"><table><thead><tr><th>Client</th>${hist.map(m => `<th class="r">${esc(ymLabel(m))}</th>`).join('')}</tr></thead><tbody>${histRows}</tbody></table></div>`;
 }
@@ -2015,6 +2040,7 @@ document.addEventListener('change', e => {
       const was = p.status; p.status = el.value; if (p.status === 'invoiced' && !p.invoicedOn) p.invoicedOn = today; if (p.status === 'paid' && !p.paidOn) p.paidOn = today;
       if (p.status === 'paid' && !p.amount && c.monthlyFee) p.amount = c.monthlyFee;
       R.pay = p; saveReview(); render(true);
+      if (p.status === 'paid' && was !== 'paid') watchSlack(S.clientId, S.period, p.slack && p.slack.at);
     } else { if (p.status === 'paid') p.paidOn = el.value; else p.invoicedOn = el.value; R.pay = p; saveReview(); }
   }
   if (el.dataset.mod) { settingsOf(c).modules = Object.assign({}, c.settings.modules, { [el.dataset.mod]: el.checked }); saveClient(); render(true); }
