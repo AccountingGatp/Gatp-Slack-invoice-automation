@@ -1,0 +1,23 @@
+{
+  "_instructions": {
+    "slackChannelId": "Enter the Slack channel ID for this client, e.g. C0123456789.",
+    "slackChannelName": "Optional readable channel name, e.g. #boss-media. Channel ID should be used for sending."
+  },
+  "clients": [
+    {"clientId":"boss-media","clientName":"Boss Media","slackChannelId":"","slackChannelName":""},
+    {"clientId":"dr-ana-maria-llc","clientName":"Dr Ana Maria LLC","slackChannelId":"","slackChannelName":""},
+    {"clientId":"em-consulting","clientName":"EM Consulting","slackChannelId":"","slackChannelName":""},
+    {"clientId":"glisten-glow","clientName":"Glisten & Glow Spa LLC","slackChannelId":"","slackChannelName":""},
+    {"clientId":"honey-auro-studio","clientName":"Honey Auro Studio","slackChannelId":"","slackChannelName":""},
+    {"clientId":"impactline","clientName":"Impactline","slackChannelId":"","slackChannelName":""},
+    {"clientId":"infosphere","clientName":"Infosphere","slackChannelId":"","slackChannelName":""},
+    {"clientId":"integrative-health-carolinas","clientName":"Integrative Health Carolinas","slackChannelId":"","slackChannelName":""},
+    {"clientId":"integrative-health-courses","clientName":"Integrative Health Courses","slackChannelId":"","slackChannelName":""},
+    {"clientId":"just-win-management-llc","clientName":"Just Win Management LLC","slackChannelId":"","slackChannelName":""},
+    {"clientId":"male-md","clientName":"Male MD","slackChannelId":"","slackChannelName":""},
+    {"clientId":"naked-skin-esthetics","clientName":"Naked Skin Esthetics","slackChannelId":"","slackChannelName":""},
+    {"clientId":"preapp","clientName":"Preapp","slackChannelId":"","slackChannelName":""},
+    {"clientId":"priten-shah","clientName":"Priten Shah","slackChannelId":"","slackChannelName":""},
+    {"clientId":"rp-tech-services","clientName":"RP Tech Services","slackChannelId":"","slackChannelName":""}
+  ]
+}

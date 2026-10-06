@@ -1,0 +1,8 @@
+{
+  "crons": [
+    { "path": "/api/monthly-reminders", "schedule": "30 4 * * *" }
+  ],
+  "functions": {
+    "api/monthly-reminders.js": { "maxDuration": 60 }
+  }
+}
