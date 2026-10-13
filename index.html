@@ -2102,7 +2102,11 @@ buildClientSelect(); buildPeriods(false); render();
 setSave('Connecting to team storage…');
 if (window.__API_MODE__) {
   setSave('Connecting…');
-  apiCall('GET', 'clients').then(() => startApi()).catch(() => {});
+  apiCall('GET', 'clients').then(() => startApi()).catch(e => {
+    if (e && e.code === 'unauthorized') return;
+    const hint = e && e.code === 'http_500' ? ' - check APP_PASSCODE and BLOB_READ_WRITE_TOKEN in Vercel, then redeploy' : e && e.code === 'http_404' ? ' - open the app from the Vercel URL, /api/data not found' : '';
+    setSave('Could not reach team storage (' + ((e && e.code) || 'network error') + ')' + hint);
+  });
 } else (async () => {
   let db = null;
   try { db = window.claude && window.claude.use ? await window.claude.use('db') : null; } catch { db = null; }
